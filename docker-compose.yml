@@ -1,0 +1,44 @@
+services:
+    postgres:
+      image: postgres:latest
+      container_name: ecommerce-postgres
+      environment:
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: ecommerce_db
+      ports:
+        - "5432:5432"
+      volumes:
+        - postgres_data:/var/lib/postgresql
+      healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U postgres -d ecommerce_db"]
+        interval: 5s
+        timeout: 5s
+        retries: 10
+    api:
+      build: .
+      container_name: ecommerce-api
+      ports:
+        - "3001:3001"
+      environment:
+        DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ecommerce_db
+        PORT: 3001
+        JWT_SECRET: ${JWT_SECRET}
+      depends_on:
+        postgres:
+          condition: service_healthy
+      healthcheck:
+        test:
+          [
+            "CMD",
+            "node",
+            "-e",
+            "fetch('http://localhost:3001/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"
+          ]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+        start_period: 10s
+
+volumes:
+  postgres_data:
