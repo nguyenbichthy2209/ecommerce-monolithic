@@ -1,117 +1,102 @@
 const prisma = require("../config/prisma");
 
-// Tạo Shipment
-const createShipment = async (req, res) => {
-  try {
-    const { oid, status } = req.body;
+const allowedStatuses = ["PENDING", "SHIPPING", "DELIVERED"];
 
-    const allowedStatuses = ["PENDING", "SHIPPING", "DELIVERED"];
+const validInt = (value) =>
+  Number.isInteger(value) && value > 0 && value <= 2147483647;
 
-    if (!allowedStatuses.includes(status)) {
-      return res.status(400).json({
-        message: "Invalid shipment status"
-      });
-    }
+const parseId = (value) =>
+  /^[1-9]\d*$/.test(value) && validInt(Number(value))
+    ? Number(value)
+    : null;
 
-    const order = await prisma.order.findUnique({
-      where: {
-        oid: oid
-      }
+function handleError(res, error) {
+  if (error.code === "P2025") {
+    return res.status(404).json({ message: "Shipment not found" });
+  }
+
+  if (error.code === "P2003") {
+    return res.status(409).json({
+      message: "Related order changed. Please refresh and retry"
     });
+  }
+
+  console.error("SHIPMENT ERROR:", error);
+  return res.status(500).json({ message: "Cannot process shipment" });
+}
+
+const createShipment = async (req, res) => {
+  const { oid, status } = req.body || {};
+
+  if (!validInt(oid)) {
+    return res.status(400).json({ message: "Invalid order ID" });
+  }
+
+  if (!allowedStatuses.includes(status)) {
+    return res.status(400).json({ message: "Invalid shipment status" });
+  }
+
+  try {
+    const order = await prisma.order.findUnique({ where: { oid } });
 
     if (!order) {
-      return res.status(404).json({
-        message: "Order not found"
-      });
+      return res.status(404).json({ message: "Order not found" });
     }
 
     const shipment = await prisma.shipment.create({
-      data: {
-        oid: oid,
-        status: status
-      }
+      data: { oid, status }
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Shipment created successfully",
       shipment
     });
-
   } catch (error) {
-    console.error("CREATE SHIPMENT ERROR:", error);
-
-    res.status(500).json({
-      message: "Cannot create shipment"
-    });
+    return handleError(res, error);
   }
 };
 
-
-// Cập nhật trạng thái Shipment
 const updateShipmentStatus = async (req, res) => {
+  const shipid = parseId(req.params.id);
+  const { status } = req.body || {};
+
+  if (shipid === null) {
+    return res.status(400).json({ message: "Invalid shipment ID" });
+  }
+
+  if (!allowedStatuses.includes(status)) {
+    return res.status(400).json({ message: "Invalid shipment status" });
+  }
+
   try {
-    const shipid = parseInt(req.params.id);
-    const { status } = req.body;
-
-    const allowedStatuses = ["PENDING", "SHIPPING", "DELIVERED"];
-
-    if (!allowedStatuses.includes(status)) {
-      return res.status(400).json({
-        message: "Invalid shipment status"
-      });
-    }
-
-    const shipment = await prisma.shipment.findUnique({
-      where: {
-        shipid: shipid
-      }
+    const shipment = await prisma.shipment.update({
+      where: { shipid },
+      data: { status }
     });
 
-    if (!shipment) {
-      return res.status(404).json({
-        message: "Shipment not found"
-      });
-    }
-
-    const updatedShipment = await prisma.shipment.update({
-      where: {
-        shipid: shipid
-      },
-      data: {
-        status: status
-      }
-    });
-
-    res.status(200).json({
+    return res.status(200).json({
       message: "Shipment status updated successfully",
-      shipment: updatedShipment
+      shipment
     });
-
   } catch (error) {
-    console.error("UPDATE SHIPMENT ERROR:", error);
-
-    res.status(500).json({
-      message: "Cannot update shipment"
-    });
+    return handleError(res, error);
   }
 };
-const getShipmentByOrder = async (req, res) => {
-  try {
-    const oid = parseInt(req.params.oid);
 
-    const order = await prisma.order.findUnique({
-      where: {
-        oid: oid
-      }
-    });
+const getShipmentByOrder = async (req, res) => {
+  const oid = parseId(req.params.oid);
+
+  if (oid === null) {
+    return res.status(400).json({ message: "Invalid order ID" });
+  }
+
+  try {
+    const order = await prisma.order.findUnique({ where: { oid } });
 
     if (!order) {
-      return res.status(404).json({
-        message: "Order not found"
-      });
+      return res.status(404).json({ message: "Order not found" });
     }
 
-    // Chỉ chủ sở hữu Order mới được xem
     if (order.uid !== req.user.uid) {
       return res.status(403).json({
         message: "You do not have permission to view this shipment"
@@ -119,27 +104,20 @@ const getShipmentByOrder = async (req, res) => {
     }
 
     const shipment = await prisma.shipment.findFirst({
-      where: {
-        oid: oid
-      }
+      where: { oid },
+      orderBy: { shipid: "asc" }
     });
 
     if (!shipment) {
-      return res.status(404).json({
-        message: "Shipment not found"
-      });
+      return res.status(404).json({ message: "Shipment not found" });
     }
 
-    res.status(200).json(shipment);
-
+    return res.status(200).json(shipment);
   } catch (error) {
-    console.error("GET SHIPMENT ERROR:", error);
-
-    res.status(500).json({
-      message: "Cannot get shipment"
-    });
+    return handleError(res, error);
   }
 };
+
 module.exports = {
   createShipment,
   updateShipmentStatus,

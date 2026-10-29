@@ -30,7 +30,7 @@ model MemberShip {
 
 model User {
   uid      Int    @id @default(autoincrement())
-  username String @db.VarChar(50)
+  username String @unique @db.VarChar(50)
   fullname String @db.VarChar(100)
   password String @db.VarChar(255)
   roleid   Int

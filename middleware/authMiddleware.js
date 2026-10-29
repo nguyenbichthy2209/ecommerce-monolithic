@@ -1,29 +1,65 @@
 const jwt = require("jsonwebtoken");
+const prisma = require("../config/prisma");
 
-const verifyToken = (req, res, next) => {
+const verifyToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
-  // Không có token
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!authHeader) {
     return res.status(401).json({
       message: "Access denied. No token provided"
     });
   }
 
-  // Lấy token sau chữ Bearer
-  const token = authHeader.split(" ")[1];
+  const match = /^Bearer\s+(\S+)$/i.exec(authHeader);
+  if (!match) {
+    return res.status(401).json({
+      message: "Invalid Authorization header"
+    });
+  }
+
+  let decoded;
 
   try {
-    // Kiểm tra token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    decoded = jwt.verify(match[1], process.env.JWT_SECRET, {
+      algorithms: ["HS256"]
+    });
 
-    // Lưu thông tin user vào request
-    req.user = decoded;
-
-    next();
+    if (
+      typeof decoded !== "object" ||
+      !Number.isInteger(decoded.uid) ||
+      decoded.uid <= 0 ||
+      decoded.uid > 2147483647
+    ) {
+      return res.status(401).json({ message: "Invalid token payload" });
+    }
   } catch (error) {
     return res.status(401).json({
       message: "Invalid or expired token"
+    });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { uid: decoded.uid },
+      select: { uid: true, roleid: true }
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        message: "Account no longer exists"
+      });
+    }
+
+    req.user = {
+      uid: user.uid,
+      roleid: user.roleid
+    };
+
+    return next();
+  } catch (error) {
+    console.error("AUTH DATABASE ERROR:", error);
+    return res.status(503).json({
+      message: "Authentication service temporarily unavailable"
     });
   }
 };
