@@ -1,14 +1,13 @@
 require("dotenv").config();
 const { PrismaClient } = require("@prisma/client");
-
 const prisma = new PrismaClient();
 
 async function main() {
   await prisma.$transaction(async (tx) => {
     await tx.role.upsert({
       where: { roleid: 1 },
-      update: {},
-      create: { roleid: 1, rolename: "CUSTOMER" }
+      update: { rolename: "normal" },
+      create: { roleid: 1, rolename: "normal" }
     });
 
     await tx.role.upsert({
@@ -23,32 +22,33 @@ async function main() {
       create: { mid: 1, mname: "BASIC", score: 0 }
     });
 
-    // Đồng bộ bộ đếm ID sau khi thêm dữ liệu bằng ID cố định.
+    await tx.memberShip.upsert({
+      where: { mid: 2 },
+      update: { mname: "NORMAL", score: 10 },
+      create: { mid: 2, mname: "NORMAL", score: 10 }
+    });
+
     await tx.$queryRaw`
       SELECT setval(
         pg_get_serial_sequence('"Role"', 'roleid'),
-        (SELECT MAX(roleid) FROM "Role"),
-        true
+        (SELECT MAX(roleid) FROM "Role"), true
       )
     `;
 
     await tx.$queryRaw`
       SELECT setval(
         pg_get_serial_sequence('"MemberShip"', 'mid'),
-        (SELECT MAX(mid) FROM "MemberShip"),
-        true
+        (SELECT MAX(mid) FROM "MemberShip"), true
       )
     `;
   });
 
-  console.log("Seed completed: CUSTOMER, ADMIN, BASIC");
+  console.log("Seed completed: normal, ADMIN, BASIC, NORMAL score 10");
 }
 
 main()
   .catch((error) => {
-    console.error("Seed failed:", error);
+    console.error(error);
     process.exitCode = 1;
   })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+  .finally(() => prisma.$disconnect());

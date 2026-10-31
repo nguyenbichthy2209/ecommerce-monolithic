@@ -47,7 +47,7 @@ const register = async (req, res) => {
         fullname: fullname.trim(),
         password: hashedPassword,
         roleid: 1,
-        mid: 1
+        mid: 2
       },
       select: {
         uid: true,
@@ -55,6 +55,8 @@ const register = async (req, res) => {
         fullname: true,
         roleid: true,
         mid: true
+        ,role: { select: { rolename: true } },
+        membership: { select: { mname: true, score: true } }
       }
     });
 

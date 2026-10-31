@@ -10,7 +10,7 @@ const {
 } = require("../controllers/orderController");
 
 // Người dùng phải đăng nhập mới được tạo đơn hàng
-router.post("/", verifyToken, createOrder);
+router.post("/", verifyToken, require("../controllers/checkoutController"));
 router.get("/my-orders", verifyToken, getMyOrders);
 router.post("/:oid/items", verifyToken, addOrderDetail);
 
